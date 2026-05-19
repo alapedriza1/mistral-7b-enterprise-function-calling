@@ -14,7 +14,19 @@ _TYPE_MAP = {
 
 
 def _check_structure(example: dict) -> list[str]:
-    """Verify required top-level keys are present."""
+    """Verify that required top-level keys are present in an example dict.
+
+    Checks for the existence of "user_message" and "assistant_response"
+    keys, which are mandatory in every generated example regardless of
+    category.
+
+    Args:
+        example: A candidate example dict to validate structurally.
+
+    Returns:
+        A list of error message strings, one for each missing key.
+        An empty list indicates both required keys are present.
+    """
     return [
         f"Missing '{k}'"
         for k in ("user_message", "assistant_response")
@@ -23,7 +35,25 @@ def _check_structure(example: dict) -> list[str]:
 
 
 def parse_model_response(response_text: str) -> list[dict]:
-    """Parse a raw text response (possibly with markdown fences) into a list of dicts."""
+    """Parse a raw LLM text response into a list of example dicts.
+
+    Handles responses that may be wrapped in markdown code fences
+    (```json ... ```) by stripping them first. Locates the outermost
+    JSON array brackets and parses the content between them.
+
+    Args:
+        response_text: The raw string returned by the generator LLM,
+            potentially containing markdown fences, leading/trailing
+            whitespace, or explanatory text surrounding the JSON array.
+
+    Returns:
+        A list of dicts parsed from the JSON array found in the response.
+
+    Raises:
+        ValueError: If no JSON array brackets are found, if the content
+            between brackets is not valid JSON, or if the parsed result
+            is not a list.
+    """
     text = re.sub(r"```(?:json)?\s*", "", response_text).strip()
     start, end = text.find("["), text.rfind("]")
     if start == -1 or end == -1:
@@ -38,7 +68,30 @@ def parse_model_response(response_text: str) -> list[dict]:
 
 
 def validate_single_tool_example(example: dict, tool_schema: dict) -> list[str]:
-    """Validate a single-tool example against its schema. Returns error list (empty = valid)."""
+    """Validate a single-tool function-calling example against its schema.
+
+    Performs the following checks in order:
+      1. Structural check (required top-level keys).
+      2. Response type check (must be a dict, not a string).
+      3. Function name matches the expected tool schema name.
+      4. "arguments" key is present in the response.
+      5. All required parameters (per schema) are provided.
+      6. No hallucinated fields (arguments not defined in the schema).
+      7. Enum constraints are respected for constrained fields.
+      8. Value types match the JSON Schema type declarations.
+
+    Args:
+        example: A candidate example dict with "user_message" and
+            "assistant_response" keys. The "assistant_response" should
+            be a dict with "name" and "arguments" keys.
+        tool_schema: The tool's JSON Schema definition dict containing
+            at minimum "name" and "parameters" (with "properties" and
+            optionally "required" sub-keys).
+
+    Returns:
+        A list of error message strings describing validation failures.
+        An empty list indicates the example is fully valid.
+    """
     errors = _check_structure(example)
     if errors:
         return errors
@@ -85,7 +138,30 @@ def validate_single_tool_example(example: dict, tool_schema: dict) -> list[str]:
 
 
 def validate_multi_tool_example(example: dict, *tool_schemas: dict) -> list[str]:
-    """Validate a multi-tool example against N schemas. Returns error list (empty = valid)."""
+    """Validate a multi-tool function-calling example against N tool schemas.
+
+    Checks that the assistant response is a list of tool calls matching
+    the expected set of tools (by name), then delegates per-call validation
+    to validate_single_tool_example for argument-level checks.
+
+    Performs the following checks:
+      1. Structural check (required top-level keys).
+      2. Response is a list with exactly len(tool_schemas) entries.
+      3. The set of called tool names matches the expected schema names.
+      4. Each individual tool call passes single-tool validation.
+
+    Args:
+        example: A candidate example dict with "user_message" and
+            "assistant_response" keys. The "assistant_response" should
+            be a list of dicts, each with "name" and "arguments" keys.
+        *tool_schemas: Variable number of tool schema dicts (one per
+            expected tool call). Each must contain "name" and "parameters"
+            keys. Order does not need to match the response order.
+
+    Returns:
+        A list of error message strings describing validation failures.
+        An empty list indicates the example is fully valid.
+    """
     errors = _check_structure(example)
     if errors:
         return errors
@@ -115,7 +191,28 @@ def validate_multi_tool_example(example: dict, *tool_schemas: dict) -> list[str]
 
 
 def validate_no_tool_example(example: dict) -> list[str]:
-    """Validate a no-tool example. Returns error list (empty = valid)."""
+    """Validate a no-tool example where no function call should be triggered.
+
+    Ensures the assistant response is a plain conversational string that
+    does not accidentally contain a serialised function call. Also enforces
+    a minimum length to catch degenerate or empty responses.
+
+    Performs the following checks:
+      1. Structural check (required top-level keys).
+      2. Response is a string (not a dict or list).
+      3. Response does not parse as a JSON object with a "name" key
+         (which would indicate an accidental function call).
+      4. Response is at least 20 characters long after stripping whitespace.
+
+    Args:
+        example: A candidate example dict with "user_message" and
+            "assistant_response" keys. The "assistant_response" should
+            be a plain-text conversational string.
+
+    Returns:
+        A list of error message strings describing validation failures.
+        An empty list indicates the example is fully valid.
+    """
     errors = _check_structure(example)
     if errors:
         return errors

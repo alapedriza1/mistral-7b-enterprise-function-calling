@@ -81,7 +81,23 @@ RULES FOR "NO-TOOL" EXAMPLES:
 
 
 def _output_format(category: str, tool_name: str = "", tool_name_2: str = "") -> str:
-    """Returns the OUTPUT FORMAT block for the given category."""
+    """Build the OUTPUT FORMAT instruction block for inclusion in a generation prompt.
+
+    Constructs a template showing the expected JSON structure for the LLM's
+    response, varying by category type (no_tool, multi_tool, or single-tool).
+
+    Args:
+        category: The example category determining output structure. One of
+            "simple", "complex", "multi_tool", "ambiguous", or "no_tool".
+        tool_name: Name of the primary tool to embed in the format template.
+            Defaults to empty string (used for no_tool category).
+        tool_name_2: Name of the secondary tool for multi_tool examples.
+            Defaults to empty string.
+
+    Returns:
+        A formatted string containing the OUTPUT FORMAT instruction with a
+        JSON array template appropriate for the given category.
+    """
     if category == "no_tool":
         example = (
             '  {{\n'
@@ -114,14 +130,25 @@ def build_prompt(
     schema_1: Optional[dict] = None,
     schema_2: Optional[dict] = None,
 ) -> str:
-    """
-    Single prompt builder for all categories.
+    """Assemble a complete generation prompt for a given category and tool schema(s).
+
+    Combines the system preamble, tool schema section, task description,
+    category-specific rules, output format template, and footer into a single
+    prompt string ready to send to the generator LLM.
 
     Args:
-        category: one of simple, complex, multi_tool, ambiguous, no_tool
-        num_examples: how many examples to request
-        schema_1: primary tool schema (None for no_tool)
-        schema_2: secondary tool schema (multi_tool / ambiguous only)
+        category: The type of examples to generate. Must be one of "simple",
+            "complex", "multi_tool", "ambiguous", or "no_tool".
+        num_examples: Number of examples to request in a single LLM call.
+        schema_1: Primary tool schema dict (with keys "name", "description",
+            "parameters"). Required for all categories except "no_tool".
+        schema_2: Secondary tool schema dict. Required for "multi_tool"
+            (the second tool to call) and "ambiguous" (the distractor tool).
+            Defaults to None.
+
+    Returns:
+        A fully assembled prompt string with all sections joined by double
+        newlines, ready for submission to the generator LLM.
     """
     parts = [_PREAMBLE, ""]
 
@@ -216,7 +243,20 @@ PLAN_CONFIG = [
 
 @dataclass
 class GenerationTask:
-    """A single generation task to send to the LLM."""
+    """A single generation task to send to the LLM.
+
+    Encapsulates all metadata needed to execute one batch generation call
+    and validate the resulting examples.
+
+    Attributes:
+        category: The example type — one of "simple", "complex",
+            "multi_tool", "ambiguous", or "no_tool".
+        prompt: The fully assembled prompt string to send to the LLM.
+        expected_count: Number of examples requested in this batch.
+        tool_name: Name of the primary tool (None for no_tool tasks).
+        tool_name_2: Name of the secondary tool (only for multi_tool
+            and ambiguous tasks).
+    """
     category: str
     prompt: str
     expected_count: int
@@ -225,7 +265,19 @@ class GenerationTask:
 
 
 def build_generation_plan() -> list[GenerationTask]:
-    """Builds the full task list from PLAN_CONFIG (~1,600 examples)."""
+    """Build the full list of generation tasks from PLAN_CONFIG.
+
+    Iterates over each entry in PLAN_CONFIG and expands it into concrete
+    GenerationTask instances based on the category:
+      - "simple" / "complex": one set of batches per tool schema.
+      - "multi_tool": one set of batches per tool pair in MULTI_TOOL_PAIRS.
+      - "ambiguous": one set of batches per pair in AMBIGUOUS_PAIRS.
+      - "no_tool": standalone batches with no specific tool.
+
+    Returns:
+        A list of GenerationTask objects representing approximately 1,600
+        total expected examples across all categories.
+    """
     tasks: list[GenerationTask] = []
 
     for category, batches, batch_size in PLAN_CONFIG:
@@ -290,17 +342,31 @@ def run_generation(
     max_retries: int = 2,
     delay_between_calls: float = 1.5,
 ) -> tuple[list[dict], pd.DataFrame]:
-    """
-    Executes all generation tasks, validates outputs, and returns results + log.
+    """Execute all generation tasks, validate outputs, and collect results.
+
+    Iterates through the task list, calling the LLM for each, parsing and
+    validating the response, and accumulating valid examples. Retries failed
+    tasks up to ``max_retries`` times. Prints progress updates every 20 tasks.
 
     Args:
-        tasks: list of GenerationTask objects (from build_generation_plan)
-        llm_call_fn: callable(prompt: str) -> str
-        max_retries: retries per failed task
-        delay_between_calls: seconds between API calls
+        tasks: List of GenerationTask objects (typically from
+            build_generation_plan()).
+        llm_call_fn: A callable with signature ``(prompt: str) -> str`` that
+            sends the prompt to the generator LLM and returns the raw text
+            response.
+        max_retries: Maximum number of retry attempts per task after an
+            initial failure. Total attempts per task = max_retries + 1.
+            Defaults to 2.
+        delay_between_calls: Seconds to sleep between consecutive API calls
+            to respect rate limits. Defaults to 1.5.
 
     Returns:
-        (all_examples, log_df)
+        A tuple of (all_examples, log_df) where:
+          - all_examples: List of validated example dicts, each augmented
+            with a "_category" key indicating its source category.
+          - log_df: A pandas DataFrame with one row per task recording
+            task_id, category, tool, attempt count, generated/valid/invalid
+            counts, and final status.
     """
     all_examples: list[dict] = []
     log: list[dict] = []
@@ -347,7 +413,21 @@ def run_generation(
 
 
 def _validate(task: GenerationTask, example: dict) -> list[str]:
-    """Route validation based on category."""
+    """Route a single example to the appropriate validator based on category.
+
+    Dispatches to validate_no_tool_example, validate_multi_tool_example, or
+    validate_single_tool_example depending on the task's category.
+
+    Args:
+        task: The GenerationTask that produced this example, used to
+            determine the validation strategy and look up relevant schemas.
+        example: A single generated example dict containing at minimum
+            "user_message" and "assistant_response" keys.
+
+    Returns:
+        A list of error message strings. An empty list indicates the
+        example passed validation.
+    """
     if task.category == "no_tool":
         return validate_no_tool_example(example)
     if task.category == "multi_tool":
@@ -359,7 +439,25 @@ def _validate(task: GenerationTask, example: dict) -> list[str]:
     return validate_single_tool_example(example, TOOL_SCHEMAS_BY_NAME[task.tool_name])
 
 
-def _log_entry(task_id, task, attempt, generated, valid, invalid, status) -> dict:
+def _log_entry(task_id: str, task: GenerationTask, attempt: int, generated: int, valid: int, invalid: int, status: str) -> dict:
+    """Create a structured log record for a completed generation task attempt.
+
+    Args:
+        task_id: Human-readable identifier string for the task (includes
+            index, category, and tool names).
+        task: The GenerationTask instance being logged.
+        attempt: The attempt number (1-indexed) at which this result was
+            produced.
+        generated: Total number of examples parsed from the LLM response.
+        valid: Number of examples that passed validation.
+        invalid: Number of examples that failed validation.
+        status: Outcome descriptor — "success" or a "failed: <reason>"
+            string.
+
+    Returns:
+        A dict with keys: task_id, category, tool, attempt, generated,
+        valid, invalid, and status.
+    """
     return {
         "task_id": task_id, "category": task.category,
         "tool": task.tool_name, "attempt": attempt,

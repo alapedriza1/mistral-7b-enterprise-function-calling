@@ -54,13 +54,13 @@ def run_inference(
     max_new_tokens: int = 512,
     temperature: float = 0.1,
 ) -> str:
-    """Run single-turn inference on the model using a chat message list.
+    """Run inference on the model using a chat message list.
 
     Applies the chat template, generates a response, and decodes only the
     newly generated tokens (excluding the input prompt).
 
     Args:
-        model: The loaded causal language model.
+        model: The loaded base language model.
         tokenizer: The tokenizer matching the model.
         messages: Chat messages in OpenAI format, e.g.
             [{"role": "user", "content": "Hello"}].
@@ -93,3 +93,51 @@ def run_inference(
     ).strip()
 
     return response
+
+
+def run_inference_on_test_set(
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    test_data: list[dict],
+    max_new_tokens: int = 512,
+    temperature: float = 0.1,
+) -> list[dict]:
+    """
+    Run inference on the full test set.
+
+    Each test example has 'messages' = [system, user, assistant].
+    We feed only [system, user] and capture the model's response.
+
+    Returns a list of result dicts with:
+        - 'input_messages': the system + user messages fed to the model
+        - 'expected': the ground truth assistant response (string)
+        - 'predicted': the model's generated response (string)
+        - 'category': the example category (if present)
+    """
+    results = []
+
+    for example in tqdm(test_data, desc="Running inference"):
+        messages = example["messages"]
+
+        # Feed only system + user (first 2 messages)
+        input_messages = messages[:2]
+
+        # Ground truth is the assistant message
+        expected = messages[2]["content"]
+
+        # Run inference
+        predicted = run_inference(
+            model, tokenizer, input_messages,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+        )
+
+        results.append({
+            "input_messages": input_messages,
+            "expected": expected,
+            "predicted": predicted,
+            "category": example.get("category", "unknown"),
+        })
+
+    print(f"Inference complete: {len(results)} examples")
+    return results

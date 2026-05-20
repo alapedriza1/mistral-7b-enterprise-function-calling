@@ -7,16 +7,13 @@ from typing import Optional
 
 import pandas as pd
 
-from src.schemas import TOOL_SCHEMAS, TOOL_NAMES
+from src.schemas import TOOL_SCHEMAS, TOOL_NAMES, TOOL_SCHEMA_MAP
 from src.validation import (
     parse_model_response,
     validate_single_tool_example,
     validate_multi_tool_example,
     validate_no_tool_example,
 )
-
-# Name-keyed lookup from the schema list
-TOOL_SCHEMAS_BY_NAME: dict[str, dict] = {t["name"]: t for t in TOOL_SCHEMAS}
 
 # ---------------------------------------------------------------------------
 # Prompt templates — shared skeleton + category-specific rules
@@ -298,8 +295,8 @@ def build_generation_plan() -> list[GenerationTask]:
                         category=category,
                         prompt=build_prompt(
                             category, batch_size,
-                            schema_1=TOOL_SCHEMAS_BY_NAME[t1],
-                            schema_2=TOOL_SCHEMAS_BY_NAME[t2],
+                            schema_1=TOOL_SCHEMA_MAP[t1],
+                            schema_2=TOOL_SCHEMA_MAP[t2],
                         ),
                         expected_count=batch_size,
                         tool_name=t1,
@@ -313,8 +310,8 @@ def build_generation_plan() -> list[GenerationTask]:
                         category=category,
                         prompt=build_prompt(
                             category, batch_size,
-                            schema_1=TOOL_SCHEMAS_BY_NAME[correct],
-                            schema_2=TOOL_SCHEMAS_BY_NAME[distractor],
+                            schema_1=TOOL_SCHEMA_MAP[correct],
+                            schema_2=TOOL_SCHEMA_MAP[distractor],
                         ),
                         expected_count=batch_size,
                         tool_name=correct,
@@ -433,10 +430,10 @@ def _validate(task: GenerationTask, example: dict) -> list[str]:
     if task.category == "multi_tool":
         return validate_multi_tool_example(
             example,
-            TOOL_SCHEMAS_BY_NAME[task.tool_name],
-            TOOL_SCHEMAS_BY_NAME[task.tool_name_2],
+            TOOL_SCHEMA_MAP[task.tool_name],
+            TOOL_SCHEMA_MAP[task.tool_name_2],
         )
-    return validate_single_tool_example(example, TOOL_SCHEMAS_BY_NAME[task.tool_name])
+    return validate_single_tool_example(example, TOOL_SCHEMA_MAP[task.tool_name])
 
 
 def _log_entry(task_id: str, task: GenerationTask, attempt: int, generated: int, valid: int, invalid: int, status: str) -> dict:

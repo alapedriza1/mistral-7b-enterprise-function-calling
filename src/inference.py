@@ -51,8 +51,8 @@ def run_inference(
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
     messages: list[dict],
-    max_new_tokens: int = 512,
-    temperature: float = 0.1,
+    max_new_tokens: int = 256,
+    temperature: float = 0.0,
 ) -> str:
     """Run inference on the model using a chat message list.
 
@@ -99,8 +99,8 @@ def run_inference_on_test_set(
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
     test_data: list[dict],
-    max_new_tokens: int = 512,
-    temperature: float = 0.1,
+    max_new_tokens: int = 256,
+    temperature: float = 0.0,
 ) -> list[dict]:
     """
     Run inference on the full test set.

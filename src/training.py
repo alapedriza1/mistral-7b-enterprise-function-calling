@@ -46,7 +46,7 @@ DEFAULT_TRAINING_ARGS = {
     "gradient_checkpointing_kwargs": {"use_reentrant": False},
 }
 
-MAX_SEQ_LENGTH = 5248
+MAX_SEQ_LENGTH = 6144
 HF_REPO_ID = "alapedriza/mistral-7b-function-calling-adapter"
 
 

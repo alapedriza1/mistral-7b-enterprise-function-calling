@@ -127,8 +127,8 @@ def check_truncation(
 ) -> pd.DataFrame:
     """Check how many examples would be truncated at the given max_seq_length.
 
-    Tokenizes each example using the chat template and returns a single-row
-    DataFrame with summary statistics.
+    Formats each example with the chat template, then tokenizes to count
+    tokens. Returns a single-row DataFrame with summary statistics.
 
     Args:
         examples: List of dicts with 'messages' key.
@@ -142,12 +142,10 @@ def check_truncation(
     """
     lengths = []
     for ex in examples:
-        token_ids = tokenizer.apply_chat_template(
-            ex["messages"], tokenize=True, add_generation_prompt=False
+        formatted = tokenizer.apply_chat_template(
+            ex["messages"], tokenize=False, add_generation_prompt=False
         )
-        # Handle both list[int] (older transformers) and dict (newer transformers)
-        if isinstance(token_ids, dict):
-            token_ids = token_ids["input_ids"]
+        token_ids = tokenizer.encode(formatted)
         lengths.append(len(token_ids))
 
     truncated_lengths = [l for l in lengths if l > max_seq_length]

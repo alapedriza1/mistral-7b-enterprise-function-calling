@@ -30,7 +30,6 @@ DEFAULT_TRAINING_ARGS = {
     "warmup_ratio": 0.05,
     "weight_decay": 0.01,
     "optim": "paged_adamw_8bit",
-    "fp16": True,
     "logging_steps": 10,
     "eval_strategy": "steps",
     "eval_steps": 50,

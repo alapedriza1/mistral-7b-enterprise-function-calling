@@ -13,8 +13,8 @@ from src.inference import MODEL_NAME, BNB_CONFIG
 # ─── Default Hyperparameters ─────────────────────────────────────────────────
 
 DEFAULT_LORA_CONFIG = {
-    "r": 64,
-    "lora_alpha": 128,
+    "r": 16,
+    "lora_alpha": 32,
     "lora_dropout": 0.05,
     "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     "task_type": TaskType.CAUSAL_LM,
@@ -128,8 +128,6 @@ def load_model_for_training(model_name: str = MODEL_NAME):
     model = prepare_model_for_kbit_training(model)
 
     # Cast any remaining bf16 params to fp16 so the AMP GradScaler works.
-    # Some checkpoint layers (layernorms, embeddings) may stay in bf16
-    # even after prepare_model_for_kbit_training.
     for param in model.parameters():
         if param.dtype == torch.bfloat16:
             param.data = param.data.to(torch.float16)

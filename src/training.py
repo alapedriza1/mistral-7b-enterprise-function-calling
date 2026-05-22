@@ -49,6 +49,21 @@ DEFAULT_TRAINING_ARGS = {
 MAX_SEQ_LENGTH = 6144
 HF_REPO_ID = "alapedriza/mistral-7b-function-calling-adapter"
 
+# Training-specific chat template with {% generation %} markers.
+# Since merge_system_into_user already folds system into user, this template
+# only handles user + assistant roles. Produces the same token format as the
+# original Mistral v0.3 template: <s>[INST] {user} [/INST] {assistant}</s>
+TRAINING_CHAT_TEMPLATE = (
+    "{{ bos_token }}"
+    "{% for message in messages %}"
+    "{% if message['role'] == 'user' %}"
+    "[INST] {{ message['content'] }} [/INST]"
+    "{% elif message['role'] == 'assistant' %}"
+    "{% generation %} {{ message['content'] | trim }}{{ eos_token }}{% endgeneration %}"
+    "{% endif %}"
+    "{% endfor %}"
+)
+
 
 # ─── Message Formatting ──────────────────────────────────────────────────────
 
@@ -99,6 +114,7 @@ def load_model_for_training(model_name: str = MODEL_NAME):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"  # Right padding for training
+    tokenizer.chat_template = TRAINING_CHAT_TEMPLATE
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,

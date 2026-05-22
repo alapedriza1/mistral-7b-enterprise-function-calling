@@ -10,11 +10,11 @@ from tqdm import tqdm
 from src.utils import load_jsonl
 
 
-# Quantisation config (shared across base + fine-tuned loading) ──
+# Quantisation config (shared across inference + training) ──
 BNB_CONFIG = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16,
+    bnb_4bit_compute_dtype=torch.float16,
     bnb_4bit_use_double_quant=True,
 )
 
@@ -31,7 +31,7 @@ def load_base_model(model_name: str = MODEL_NAME):
         model_name,
         quantization_config=BNB_CONFIG,
         device_map="auto",
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
     )
     model.eval()
 

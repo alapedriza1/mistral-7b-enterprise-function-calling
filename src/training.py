@@ -34,6 +34,7 @@ DEFAULT_TRAINING_ARGS = {
     "logging_steps": 10,
     "eval_strategy": "steps",
     "eval_steps": 50,
+    "eval_accumulation_steps": 1,
     "save_strategy": "steps",
     "save_steps": 50,
     "save_total_limit": 3,

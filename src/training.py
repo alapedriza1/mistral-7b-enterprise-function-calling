@@ -30,7 +30,6 @@ DEFAULT_TRAINING_ARGS = {
     "warmup_ratio": 0.05,
     "weight_decay": 0.01,
     "optim": "paged_adamw_8bit",
-    "fp16": True,
     "logging_steps": 10,
     "eval_strategy": "steps",
     "eval_steps": 50,
@@ -103,21 +102,6 @@ def merge_system_into_user(messages: list[dict]) -> list[dict]:
     return merged
 
 
-def _cast_all_params_to_fp16(model):
-    """Cast any bf16 parameters to fp16 across the entire model.
-
-    Must be called AFTER LoRA adapters are attached, since LoRA may
-    introduce new bf16 parameters. The fp16 AMP GradScaler does not
-    support bf16 tensors.
-    """
-    for param in model.parameters():
-        if param.dtype == torch.bfloat16:
-            param.data = param.data.to(torch.float16)
-    for buf in model.buffers():
-        if buf.dtype == torch.bfloat16:
-            buf.data = buf.data.to(torch.float16)
-
-
 # ─── Model Loading ───────────────────────────────────────────────────────────
 
 
@@ -150,7 +134,7 @@ def load_model_for_training(model_name: str = MODEL_NAME):
 
 
 def apply_lora(model, lora_config: dict = None) -> object:
-    """Attach a LoRA adapter to the model and ensure all params are fp16.
+    """Attach a LoRA adapter to the model.
 
     Args:
         model: Base model prepared for k-bit training.
@@ -158,16 +142,12 @@ def apply_lora(model, lora_config: dict = None) -> object:
             if not provided.
 
     Returns:
-        PeftModel with the LoRA adapter applied, all params cast to fp16.
+        PeftModel with the LoRA adapter applied.
     """
     config = lora_config or DEFAULT_LORA_CONFIG
     peft_config = LoraConfig(**config)
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
-
-    # Cast AFTER LoRA is applied — LoRA may create new bf16 params
-    _cast_all_params_to_fp16(model)
-
     return model
 
 

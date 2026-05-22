@@ -4,12 +4,8 @@ import torch
 import pandas as pd
 from datasets import Dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    TrainingArguments,
-)
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from trl import SFTConfig, SFTTrainer
 
 from src.inference import MODEL_NAME, BNB_CONFIG
 
@@ -120,7 +116,7 @@ def _prepare_dataset(examples: list[dict]) -> Dataset:
     )
 
 
-# ─── Truncation Check ────────────────────────────────────────────────────────
+# ─── Truncation Check ───────────────────────────────────────────────────────
 
 
 def check_truncation(
@@ -182,8 +178,8 @@ def _create_trainer(
 ) -> SFTTrainer:
     """Create an SFTTrainer configured for QLoRA chat fine-tuning.
 
-    Uses DataCollatorForCompletionOnlyLM to mask everything except the
-    assistant response during loss computation.
+    Uses assistant_only_loss to compute loss only on assistant responses.
+    Pushes the adapter to HuggingFace Hub at the end of training.
 
     Args:
         model: PeftModel with LoRA adapters.
@@ -196,27 +192,22 @@ def _create_trainer(
     Returns:
         A configured SFTTrainer instance.
     """
-    training_arguments = TrainingArguments(
+    sft_config = SFTConfig(
         output_dir=output_dir,
+        max_length=max_seq_length,
+        assistant_only_loss=True,
+        packing=False,
+        push_to_hub=True,
+        hub_model_id=HF_REPO_ID,
         **DEFAULT_TRAINING_ARGS,
-    )
-
-    # Only compute loss on assistant tokens
-    # Mistral uses "[/INST]" to end the user turn; assistant tokens follow it
-    response_template = "[/INST]"
-    collator = DataCollatorForCompletionOnlyLM(
-        response_template=response_template,
-        tokenizer=tokenizer,
     )
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        args=sft_config,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        data_collator=collator,
-        max_seq_length=max_seq_length,
-        args=training_arguments,
+        processing_class=tokenizer,
     )
 
     return trainer
@@ -257,10 +248,6 @@ def run_training(
 
     print("Starting training...")
     train_result = trainer.train()
-
-    # Push adapter to HuggingFace Hub
-    model.push_to_hub(HF_REPO_ID)
-    tokenizer.push_to_hub(HF_REPO_ID)
-    print(f"Adapter pushed to: huggingface.co/{HF_REPO_ID}")
+    trainer.push_to_hub()
 
     return trainer, train_result

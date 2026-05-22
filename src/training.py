@@ -50,6 +50,43 @@ MAX_SEQ_LENGTH = 5248
 HF_REPO_ID = "alapedriza/mistral-7b-function-calling-adapter"
 
 
+# ─── Message Formatting ──────────────────────────────────────────────────────
+
+
+def merge_system_into_user(messages: list[dict]) -> list[dict]:
+    """Merge the system message into the first user message.
+
+    Mistral v0.3's chat template only injects the system message when the
+    user message is the LAST in the conversation (i.e. inference mode with
+    [system, user]). For training, where messages are [system, user, assistant],
+    the user is not loop.last so the system content is silently dropped.
+
+    This function ensures the system prompt (containing tool schemas) is always
+    visible to the model during training.
+
+    Args:
+        messages: List of message dicts with 'role' and 'content' keys.
+
+    Returns:
+        A new list with only 'user' and 'assistant' messages, where the
+        system content is prepended to the first user message.
+    """
+    if not messages or messages[0]["role"] != "system":
+        return messages
+
+    system_content = messages[0]["content"]
+    merged = []
+    for msg in messages[1:]:
+        if msg["role"] == "user" and not merged:
+            merged.append({
+                "role": "user",
+                "content": f"{system_content}\n\n{msg['content']}",
+            })
+        else:
+            merged.append(msg)
+    return merged
+
+
 # ─── Model Loading ───────────────────────────────────────────────────────────
 
 
@@ -103,7 +140,9 @@ def apply_lora(model, lora_config: dict = None) -> object:
 def _prepare_dataset(examples: list[dict]) -> Dataset:
     """Convert our JSONL examples into a HuggingFace Dataset.
 
-    Each example must have a 'messages' key with the chat messages list.
+    Merges system messages into user messages because the v0.3 chat template
+    only injects system content when user is the last message (inference mode),
+    not when assistant follows (training mode).
 
     Args:
         examples: List of dicts with 'messages' key.
@@ -111,9 +150,10 @@ def _prepare_dataset(examples: list[dict]) -> Dataset:
     Returns:
         A HuggingFace Dataset with 'messages' column.
     """
-    return Dataset.from_list(
-        [{"messages": ex["messages"]} for ex in examples]
-    )
+    return Dataset.from_list([
+        {"messages": merge_system_into_user(ex["messages"])}
+        for ex in examples
+    ])
 
 
 # ─── Truncation Check ───────────────────────────────────────────────────────
@@ -127,8 +167,8 @@ def check_truncation(
 ) -> pd.DataFrame:
     """Check how many examples would be truncated at the given max_seq_length.
 
-    Formats each example with the chat template, then tokenizes to count
-    tokens. Returns a single-row DataFrame with summary statistics.
+    Merges system into user before formatting (same as training pipeline),
+    then tokenizes to count tokens.
 
     Args:
         examples: List of dicts with 'messages' key.
@@ -142,8 +182,9 @@ def check_truncation(
     """
     lengths = []
     for ex in examples:
+        merged = merge_system_into_user(ex["messages"])
         formatted = tokenizer.apply_chat_template(
-            ex["messages"], tokenize=False, add_generation_prompt=False
+            merged, tokenize=False, add_generation_prompt=False
         )
         token_ids = tokenizer.encode(formatted)
         lengths.append(len(token_ids))

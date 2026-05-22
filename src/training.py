@@ -23,13 +23,14 @@ DEFAULT_LORA_CONFIG = {
 
 DEFAULT_TRAINING_ARGS = {
     "num_train_epochs": 3,
-    "per_device_train_batch_size": 2,
-    "gradient_accumulation_steps": 8,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 16,
     "learning_rate": 2e-4,
     "lr_scheduler_type": "cosine",
     "warmup_ratio": 0.05,
     "weight_decay": 0.01,
     "optim": "paged_adamw_8bit",
+    "fp16": True,
     "logging_steps": 10,
     "eval_strategy": "steps",
     "eval_steps": 50,
@@ -124,6 +125,13 @@ def load_model_for_training(model_name: str = MODEL_NAME):
     )
 
     model = prepare_model_for_kbit_training(model)
+
+    # Cast any remaining bf16 params to fp16 so the AMP GradScaler works.
+    # Some checkpoint layers (layernorms, embeddings) may stay in bf16
+    # even after prepare_model_for_kbit_training.
+    for param in model.parameters():
+        if param.dtype == torch.bfloat16:
+            param.data = param.data.to(torch.float16)
 
     return model, tokenizer
 

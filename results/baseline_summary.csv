@@ -1,0 +1,9 @@
+,score
+JSON Validity Rate,0.8705035971223022
+Function Name Accuracy,0.9173553719008265
+Required Fields Completeness,0.9553719008264462
+Type Correctness Rate,1.0
+Enum Compliance Rate,1.0
+Avg Hallucinated Params,0.008264462809917356
+Argument Value Match,0.7683720320083957
+No-Tool Restraint Accuracy,1.0

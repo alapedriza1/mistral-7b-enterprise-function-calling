@@ -585,6 +585,7 @@ TOOL_SCHEMAS = [
 
 ALL_SCHEMAS_STR = json.dumps(TOOL_SCHEMAS, indent=2)
 TOOL_NAMES = [tool["name"] for tool in TOOL_SCHEMAS]
+TOOL_SCHEMA_MAP = {tool["name"]: tool for tool in TOOL_SCHEMAS}
 
 SYSTEM_PROMPT = f"""You are a helpful enterprise assistant with access to the following tools:
 

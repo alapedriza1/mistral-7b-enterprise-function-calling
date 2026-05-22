@@ -47,7 +47,7 @@ DEFAULT_TRAINING_ARGS = {
     "gradient_checkpointing_kwargs": {"use_reentrant": False},
 }
 
-MAX_SEQ_LENGTH = 6144
+MAX_SEQ_LENGTH = 4096
 HF_REPO_ID = "alapedriza/mistral-7b-function-calling-adapter"
 
 # Training-specific chat template with {% generation %} markers.
@@ -115,6 +115,7 @@ def load_model_for_training(model_name: str = MODEL_NAME):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"  # Right padding for training
+    tokenizer.truncation_side = "left"  # Truncate beginning of system prompt, keep assistant response
     tokenizer.chat_template = TRAINING_CHAT_TEMPLATE
 
     model = AutoModelForCausalLM.from_pretrained(

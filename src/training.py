@@ -22,7 +22,7 @@ DEFAULT_LORA_CONFIG = {
 }
 
 DEFAULT_TRAINING_ARGS = {
-    "num_train_epochs": 3,
+    "num_train_epochs": 1,
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 16,
     "learning_rate": 2e-4,
@@ -31,15 +31,11 @@ DEFAULT_TRAINING_ARGS = {
     "weight_decay": 0.01,
     "optim": "paged_adamw_8bit",
     "logging_steps": 10,
-    "eval_strategy": "steps",
-    "eval_steps": 50,
+    "eval_strategy": "epoch",
     "eval_accumulation_steps": 1,
-    "save_strategy": "steps",
-    "save_steps": 50,
-    "save_total_limit": 3,
-    "load_best_model_at_end": True,
-    "metric_for_best_model": "eval_loss",
-    "greater_is_better": False,
+    "save_strategy": "epoch",
+    "save_total_limit": 1,
+    "load_best_model_at_end": False,
     "report_to": "none",
     "max_grad_norm": 1.0,
     "gradient_checkpointing": True,

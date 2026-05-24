@@ -6,7 +6,7 @@ from typing import Optional
 
 import pandas as pd
 
-from src.schemas import SYSTEM_PROMPT
+from src.schemas import SYSTEM_PROMPT, MAX_SEQ_LENGTH
 
 
 def to_training_format(example: dict) -> dict:
@@ -172,7 +172,7 @@ def dataset_stats(examples: list[dict]):
 
     Reports total count, category distribution, approximate token-length
     statistics (mean, min, max, P95), and a warning if any examples risk
-    exceeding the 8192-token context window. Token counts are estimated
+    exceeding the MAX_SEQ_LENGTH token limit. Token counts are estimated
     at ~4 characters per token.
 
     Args:
@@ -208,8 +208,9 @@ def dataset_stats(examples: list[dict]):
     print(f"  Min:  {min(tokens)} | Max: {max(tokens)}")
     print(f"  P95:  {sorted(tokens)[int(len(tokens)*0.95)]}")
 
-    long = [t for t in tokens if t > 7500]
+    token_limit = int(MAX_SEQ_LENGTH * 0.95)
+    long = [t for t in tokens if t > token_limit]
     if long:
-        print(f"\n⚠️  {len(long)} examples may approach 8192 token limit")
+        print(f"\n  WARNING: {len(long)} examples may approach {MAX_SEQ_LENGTH} token limit")
     else:
-        print(f"\n✅ All examples well within 8192 token limit")
+        print(f"\n  All examples well within {MAX_SEQ_LENGTH} token limit")

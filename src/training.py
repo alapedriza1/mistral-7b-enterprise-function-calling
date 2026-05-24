@@ -1,5 +1,7 @@
 """QLoRA fine-tuning utilities for Mistral 7B function calling."""
 
+import json
+import random
 import torch
 import pandas as pd
 from datasets import Dataset
@@ -8,6 +10,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import SFTConfig, SFTTrainer
 
 from src.inference import MODEL_NAME, BNB_CONFIG
+from src.schemas import TOOL_SCHEMA_MAP, TOOL_NAMES, build_system_prompt, MAX_SEQ_LENGTH
 
 
 # ─── Default Hyperparameters ─────────────────────────────────────────────────
@@ -42,7 +45,7 @@ DEFAULT_TRAINING_ARGS = {
     "gradient_checkpointing_kwargs": {"use_reentrant": False},
 }
 
-MAX_SEQ_LENGTH = 4096
+N_DISTRACTOR_TOOLS = 1
 HF_REPO_ID = "alapedriza/mistral-7b-function-calling-adapter"
 
 # Training-specific chat template with {% generation %} markers.
@@ -98,6 +101,62 @@ def merge_system_into_user(messages: list[dict]) -> list[dict]:
     return merged
 
 
+def _trim_system_tools(messages: list[dict], n_distractors: int = N_DISTRACTOR_TOOLS) -> list[dict]:
+    """Trim the system prompt to only include relevant tools + random distractors.
+
+    Replaces the full 16-tool system prompt with a minimal version containing
+    only the tools used in the assistant response plus random distractors.
+
+    Args:
+        messages: List of message dicts [system, user, assistant].
+        n_distractors: Number of random unused tools to include as distractors.
+
+    Returns:
+        Messages with a trimmed system prompt containing only relevant tools.
+    """
+    if not messages or messages[0]["role"] != "system":
+        return messages
+
+    assistant_content = messages[2]["content"] if len(messages) > 2 else ""
+
+    # Identify which tools the assistant actually uses
+    used_tools = set()
+    try:
+        response = json.loads(assistant_content)
+        if isinstance(response, list):
+            for r in response:
+                used_tools.add(r["name"])
+        elif isinstance(response, dict):
+            used_tools.add(response["name"])
+    except (json.JSONDecodeError, KeyError, TypeError):
+        pass  # Conversational response — no tools used
+
+    # Select: used tools + random distractors
+    available_distractors = [t for t in TOOL_NAMES if t not in used_tools]
+    n_dist = min(n_distractors, len(available_distractors))
+    distractors = random.sample(available_distractors, n_dist)
+
+    # For conversational examples (no tool used), include a few random tools
+    # so the model learns when NOT to use tools
+    if not used_tools:
+        selected_names = random.sample(TOOL_NAMES, min(3, len(TOOL_NAMES)))
+    else:
+        selected_names = list(used_tools) + distractors
+
+    # Shuffle so the correct tool isn't always first
+    random.shuffle(selected_names)
+
+    # Build trimmed system prompt using the shared builder from schemas
+    selected_tools = [TOOL_SCHEMA_MAP[name] for name in selected_names]
+    trimmed_system = build_system_prompt(selected_tools)
+
+    return [
+        {"role": "system", "content": trimmed_system},
+        messages[1],  # user
+        messages[2],  # assistant
+    ]
+
+
 # ─── Model Loading ───────────────────────────────────────────────────────────
 
 
@@ -110,7 +169,6 @@ def load_model_for_training(model_name: str = MODEL_NAME):
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"  # Right padding for training
-    tokenizer.truncation_side = "left"  # Truncate beginning of system prompt, keep assistant response
     tokenizer.chat_template = TRAINING_CHAT_TEMPLATE
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -153,9 +211,8 @@ def apply_lora(model, lora_config: dict = None) -> object:
 def _prepare_dataset(examples: list[dict]) -> Dataset:
     """Convert our JSONL examples into a HuggingFace Dataset.
 
-    Merges system messages into user messages because the v0.3 chat template
-    only injects system content when user is the last message (inference mode),
-    not when assistant follows (training mode).
+    Trims system prompts to only include relevant tools (+ distractors),
+    then merges system into user message for the chat template.
 
     Args:
         examples: List of dicts with 'messages' key.
@@ -164,7 +221,7 @@ def _prepare_dataset(examples: list[dict]) -> Dataset:
         A HuggingFace Dataset with 'messages' column.
     """
     return Dataset.from_list([
-        {"messages": merge_system_into_user(ex["messages"])}
+        {"messages": merge_system_into_user(_trim_system_tools(ex["messages"]))}
         for ex in examples
     ])
 
@@ -180,7 +237,7 @@ def check_truncation(
 ) -> pd.DataFrame:
     """Check how many examples would be truncated at the given max_seq_length.
 
-    Merges system into user before formatting (same as training pipeline),
+    Applies the same preprocessing as training (trim tools, merge system),
     then tokenizes to count tokens.
 
     Args:
@@ -195,7 +252,8 @@ def check_truncation(
     """
     lengths = []
     for ex in examples:
-        merged = merge_system_into_user(ex["messages"])
+        trimmed = _trim_system_tools(ex["messages"])
+        merged = merge_system_into_user(trimmed)
         formatted = tokenizer.apply_chat_template(
             merged, tokenize=False, add_generation_prompt=False
         )

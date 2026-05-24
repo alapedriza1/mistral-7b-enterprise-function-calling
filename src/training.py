@@ -27,8 +27,8 @@ DEFAULT_LORA_CONFIG = {
 
 DEFAULT_TRAINING_ARGS = {
     "num_train_epochs": 1,
-    "per_device_train_batch_size": 1,
-    "gradient_accumulation_steps": 16,
+    "per_device_train_batch_size": 2,
+    "gradient_accumulation_steps": 8,
     "learning_rate": 2e-4,
     "lr_scheduler_type": "cosine",
     "warmup_ratio": 0.05,
@@ -42,8 +42,7 @@ DEFAULT_TRAINING_ARGS = {
     "load_best_model_at_end": False,
     "report_to": "none",
     "max_grad_norm": 1.0,
-    "gradient_checkpointing": True,
-    "gradient_checkpointing_kwargs": {"use_reentrant": False},
+    "gradient_checkpointing": False,
 }
 
 N_DISTRACTOR_TOOLS = 1
@@ -222,7 +221,7 @@ def load_model_for_training(model_name: str = MODEL_NAME):
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         quantization_config=BNB_CONFIG,
-        device_map="auto",
+        device_map={"": 0},
         torch_dtype=torch.float16,
         attn_implementation="sdpa",
     )

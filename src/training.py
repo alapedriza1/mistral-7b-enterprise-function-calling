@@ -1,5 +1,8 @@
 """QLoRA fine-tuning utilities for Mistral 7B function calling."""
 
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Force single GPU — prevents DataParallel on T4x2
+
 import json
 import random
 import time
@@ -226,7 +229,7 @@ def load_model_for_training(model_name: str = MODEL_NAME):
         attn_implementation="sdpa",
     )
 
-    model = prepare_model_for_kbit_training(model)
+    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=False)
 
     return model, tokenizer
 

@@ -6,7 +6,7 @@ from typing import Optional
 
 import pandas as pd
 
-from src.schemas import SYSTEM_PROMPT, MAX_SEQ_LENGTH
+from src.schemas import SYSTEM_PROMPT
 
 
 def to_training_format(example: dict) -> dict:
@@ -108,7 +108,7 @@ def save_jsonl(
                 record.pop("category", None)
                 record.pop("_category", None)
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    print(f"Saved {len(examples)} examples → {filepath}")
+    print(f"Saved {len(examples)} examples -> {filepath}")
 
 
 def load_jsonl(filepath: str) -> list[dict]:
@@ -168,12 +168,7 @@ def spot_check(
 
 
 def dataset_stats(examples: list[dict]):
-    """Print summary statistics for a dataset of examples.
-
-    Reports total count, category distribution, approximate token-length
-    statistics (mean, min, max, P95), and a warning if any examples risk
-    exceeding the MAX_SEQ_LENGTH token limit. Token counts are estimated
-    at ~4 characters per token.
+    """Print count and category distribution for a dataset.
 
     Args:
         examples: List of example dicts in either raw or training format.
@@ -185,32 +180,3 @@ def dataset_stats(examples: list[dict]):
         ex.get("category", ex.get("_category", "unknown")) for ex in examples
     ]).value_counts()
     print(f"\nBy category:\n{cats.to_string()}")
-
-    def estimate_tokens(ex):
-        """Estimate token count for a single example using the 4-char heuristic.
-
-        Args:
-            ex: A single example dict in either raw or training format.
-
-        Returns:
-            Approximate integer token count.
-        """
-        if "messages" in ex:
-            return sum(len(m["content"]) for m in ex["messages"]) // 4
-        total = len(ex.get("user_message", ""))
-        resp = ex.get("assistant_response", "")
-        total += len(resp) if isinstance(resp, str) else len(json.dumps(resp))
-        return total // 4
-
-    tokens = [estimate_tokens(ex) for ex in examples]
-    print(f"\nApprox token lengths:")
-    print(f"  Mean: {sum(tokens)/len(tokens):.0f}")
-    print(f"  Min:  {min(tokens)} | Max: {max(tokens)}")
-    print(f"  P95:  {sorted(tokens)[int(len(tokens)*0.95)]}")
-
-    token_limit = int(MAX_SEQ_LENGTH * 0.95)
-    long = [t for t in tokens if t > token_limit]
-    if long:
-        print(f"\n  WARNING: {len(long)} examples may approach {MAX_SEQ_LENGTH} token limit")
-    else:
-        print(f"\n  All examples well within {MAX_SEQ_LENGTH} token limit")

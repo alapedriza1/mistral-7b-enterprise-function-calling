@@ -2,11 +2,12 @@
 
 import json
 import random
+import time
 import torch
 import pandas as pd
 from datasets import Dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback
 from trl import SFTConfig, SFTTrainer
 
 from src.inference import MODEL_NAME, BNB_CONFIG
@@ -33,7 +34,7 @@ DEFAULT_TRAINING_ARGS = {
     "warmup_ratio": 0.05,
     "weight_decay": 0.01,
     "optim": "paged_adamw_8bit",
-    "logging_steps": 10,
+    "logging_steps": 1,
     "eval_strategy": "epoch",
     "eval_accumulation_steps": 1,
     "save_strategy": "epoch",
@@ -62,6 +63,53 @@ TRAINING_CHAT_TEMPLATE = (
     "{% endif %}"
     "{% endfor %}"
 )
+
+
+# ─── Logging Callback ────────────────────────────────────────────────────────
+
+
+class PrintProgressCallback(TrainerCallback):
+    """Prints training progress to stdout so it appears in Kaggle logs."""
+
+    def __init__(self):
+        self.start_time = None
+        self.total_steps = None
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        self.start_time = time.time()
+        self.total_steps = state.max_steps
+        print(f"[TRAIN] Starting | {self.total_steps} total steps | "
+              f"batch={args.per_device_train_batch_size} | "
+              f"grad_accum={args.gradient_accumulation_steps} | "
+              f"epochs={args.num_train_epochs}", flush=True)
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs is None:
+            return
+        elapsed = time.time() - self.start_time
+        elapsed_min = elapsed / 60
+        step = state.global_step
+        loss = logs.get("loss", logs.get("eval_loss", None))
+        lr = logs.get("learning_rate", None)
+
+        parts = [f"[TRAIN] Step {step}/{self.total_steps}"]
+        if loss is not None:
+            parts.append(f"loss={loss:.4f}")
+        if lr is not None:
+            parts.append(f"lr={lr:.2e}")
+        parts.append(f"elapsed={elapsed_min:.1f}min")
+
+        if step > 0:
+            sec_per_step = elapsed / step
+            remaining = (self.total_steps - step) * sec_per_step
+            parts.append(f"eta={remaining/60:.1f}min")
+
+        print(" | ".join(parts), flush=True)
+
+    def on_train_end(self, args, state, control, **kwargs):
+        elapsed = (time.time() - self.start_time) / 60
+        print(f"[TRAIN] Complete | {state.global_step} steps | {elapsed:.1f} min total",
+              flush=True)
 
 
 # ─── Message Formatting ──────────────────────────────────────────────────────
@@ -321,6 +369,7 @@ def _create_trainer(
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         processing_class=tokenizer,
+        callbacks=[PrintProgressCallback()],
     )
 
     return trainer
@@ -347,9 +396,15 @@ def run_training(
     Returns:
         Tuple of (trainer, train_result) for inspection.
     """
+    print("[STAGE] Preparing train dataset...", flush=True)
     train_dataset = _prepare_dataset(train_data)
-    val_dataset = _prepare_dataset(val_data)
+    print(f"[STAGE] Train dataset ready: {len(train_dataset)} examples", flush=True)
 
+    print("[STAGE] Preparing val dataset...", flush=True)
+    val_dataset = _prepare_dataset(val_data)
+    print(f"[STAGE] Val dataset ready: {len(val_dataset)} examples", flush=True)
+
+    print("[STAGE] Creating trainer...", flush=True)
     trainer = _create_trainer(
         model=model,
         tokenizer=tokenizer,
@@ -358,9 +413,12 @@ def run_training(
         output_dir=output_dir,
         max_seq_length=max_seq_length,
     )
+    print("[STAGE] Trainer created, calling trainer.train()...", flush=True)
 
-    print("Starting training...")
     train_result = trainer.train()
+
+    print("[STAGE] Training done, pushing to hub...", flush=True)
     trainer.push_to_hub()
+    print("[STAGE] Push complete.", flush=True)
 
     return trainer, train_result

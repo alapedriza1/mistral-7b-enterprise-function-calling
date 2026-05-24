@@ -42,7 +42,8 @@ DEFAULT_TRAINING_ARGS = {
     "load_best_model_at_end": False,
     "report_to": "none",
     "max_grad_norm": 1.0,
-    "gradient_checkpointing": False,
+    "gradient_checkpointing": True,
+    "gradient_checkpointing_kwargs": {"use_reentrant": False},
 }
 
 N_DISTRACTOR_TOOLS = 1
@@ -210,9 +211,9 @@ def _trim_system_tools(messages: list[dict], n_distractors: int = N_DISTRACTOR_T
 def load_model_for_training(model_name: str = MODEL_NAME):
     """Load the base model in 4-bit and prepare it for QLoRA training.
 
-    Uses device_map="auto" to split layers across available GPUs (pipeline
-    parallelism). On Kaggle T4x2, this splits ~16 layers per GPU, preventing
-    OOM while avoiding the slowdown of gradient checkpointing.
+    Uses device_map="auto" to split model layers across available GPUs.
+    On Kaggle T4x2, this distributes ~16 layers per GPU. The Trainer
+    detects hf_device_map spanning multiple devices and skips DataParallel.
 
     Returns:
         Tuple of (model, tokenizer) ready for LoRA adapter attachment.
@@ -230,7 +231,7 @@ def load_model_for_training(model_name: str = MODEL_NAME):
         attn_implementation="sdpa",
     )
 
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=False)
+    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
     return model, tokenizer
 
@@ -253,13 +254,6 @@ def apply_lora(model, lora_config: dict = None) -> object:
     peft_config = LoraConfig(**config)
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
-
-    # Tell the Trainer this model is already split across GPUs (pipeline parallel).
-    # This prevents it from wrapping in nn.DataParallel which is incompatible
-    # with bitsandbytes quantized models.
-    model.is_parallelizable = True
-    model.model_parallel = True
-
     return model
 
 

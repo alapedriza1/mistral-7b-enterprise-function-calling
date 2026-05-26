@@ -1,0 +1,17 @@
+tool_name,json_valid,func_name_correct,required_fields,type_correct,enum_compliant,hallucinated_params,argument_match,n
+create_audit_task,1.0,1.0,1.0,1.0,1.0,0.0,0.8095238095238096,6
+create_invoice,0.625,1.0,1.0,1.0,1.0,0.0,0.96,8
+escalate_issue,1.0,1.0,1.0,1.0,1.0,0.0,0.7875000000000001,8
+extract_document_data,1.0,0.9,0.9,1.0,1.0,0.0,0.8454545454545455,10
+generate_report,1.0,1.0,1.0,1.0,1.0,0.0,0.9583333333333333,8
+get_customer_risk_profile,1.0,1.0,1.0,1.0,1.0,0.0,1.0,9
+get_portfolio_summary,1.0,1.0,1.0,1.0,1.0,0.0,1.0,2
+get_transaction_history,1.0,0.9090909090909091,0.9090909090909091,1.0,1.0,0.0,0.8222222222222222,11
+get_workflow_status,1.0,1.0,1.0,1.0,1.0,0.0,0.9297619047619048,15
+log_time_entry,1.0,1.0,1.0,1.0,1.0,0.0,0.890909090909091,11
+run_compliance_check,1.0,1.0,1.0,1.0,1.0,0.0,0.9571428571428572,7
+run_database_query,1.0,0.7142857142857143,0.7142857142857143,1.0,0.8571428571428571,0.0,0.5119047619047619,7
+schedule_client_meeting,1.0,1.0,1.0,1.0,1.0,0.0,0.8142857142857143,7
+search_customers,1.0,1.0,1.0,1.0,1.0,0.0,0.8337797619047619,16
+send_notification,1.0,1.0,0.7142857142857143,1.0,1.0,0.0,0.6571428571428571,7
+update_customer_record,1.0,1.0,1.0,1.0,1.0,0.0,0.5714285714285714,7

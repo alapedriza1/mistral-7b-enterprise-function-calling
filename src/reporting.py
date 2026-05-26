@@ -24,7 +24,14 @@ _BUCKET_LABELS = ["FAILURES", "PARTIAL SUCCESSES", "CLEAN SUCCESSES", "NO-TOOL E
 
 
 def _classify_bucket(row: pd.Series) -> str:
-    """Classify a single eval row into an outcome bucket."""
+    """Classify a single eval row into an outcome bucket.
+
+    Args:
+        row: A single row from the eval DataFrame.
+
+    Returns:
+        One of the bucket label strings.
+    """
     if row["category"] == "no_tool":
         return "NO-TOOL EXAMPLES"
     if not row["json_valid"] or not row["func_name_correct"]:
@@ -55,7 +62,14 @@ def _extract_tool_name(expected_str: str) -> str | None:
 
 
 def overall_summary(eval_df: pd.DataFrame) -> pd.DataFrame:
-    """Overall summary metrics. Returns a single-column DataFrame of raw floats."""
+    """Overall summary metrics. Returns a single-column DataFrame of raw floats.
+
+    Args:
+        eval_df: DataFrame from evaluate_results (one row per example).
+
+    Returns:
+        A single-column DataFrame with metric names as index and scores as values.
+    """
     tool_rows = eval_df[eval_df["category"] != "no_tool"]
     no_tool_rows = eval_df[eval_df["category"] == "no_tool"]
 
@@ -80,7 +94,14 @@ def breakdown_by_category(eval_df: pd.DataFrame) -> pd.DataFrame:
     """Metrics broken down by category.
 
     Tool categories will show NaN for no_tool_restraint, and no_tool will
-    show NaN for tool metrics — pandas mean() skips NaN by default.
+    show NaN for tool metrics - pandas mean() skips NaN by default.
+
+    Args:
+        eval_df: DataFrame from evaluate_results (one row per example).
+
+    Returns:
+        A DataFrame with categories as index and metric means as columns,
+        plus an 'n' column with the count per category.
     """
     summary = eval_df.groupby("category")[_ALL_METRICS].mean()
     summary["n"] = eval_df.groupby("category").size()
@@ -94,6 +115,10 @@ def breakdown_by_tool(eval_df: pd.DataFrame, results: list[dict]) -> pd.DataFram
         eval_df: DataFrame from evaluate_results (one row per example).
         results: The same results list passed to evaluate_results, used to
             extract tool names from the expected output.
+
+    Returns:
+        A DataFrame with tool names as index and metric means as columns,
+        plus an 'n' column with the count per tool.
     """
     assert len(eval_df) == len(results), (
         f"eval_df ({len(eval_df)}) and results ({len(results)}) must have the same length and order"
@@ -148,7 +173,13 @@ def select_examples(
 
 
 def print_example(results: list[dict], eval_df: pd.DataFrame, idx: int):
-    """Print a single example with its metrics."""
+    """Print a single example with its metrics.
+
+    Args:
+        results: List of result dicts from run_inference_on_test_set.
+        eval_df: DataFrame from evaluate_results.
+        idx: Positional index of the example to print.
+    """
     r = results[idx]
     cat = r["category"]
 
@@ -172,7 +203,15 @@ def print_qualitative_examples(
     shuffle: bool = False,
     seed: int = 42,
 ):
-    """Select and print representative examples from each outcome bucket."""
+    """Select and print representative examples from each outcome bucket.
+
+    Args:
+        results: List of result dicts from run_inference_on_test_set.
+        eval_df: DataFrame from evaluate_results.
+        n_per_bucket: Number of examples to print from each bucket.
+        shuffle: If True, randomly sample from each bucket.
+        seed: Random seed for reproducibility when shuffle=True.
+    """
     selected = select_examples(eval_df, n_per_bucket=n_per_bucket, shuffle=shuffle, seed=seed)
 
     for label, indices in selected.items():

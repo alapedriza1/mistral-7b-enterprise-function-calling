@@ -22,7 +22,14 @@ MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.3"
 
 
 def load_base_model(model_name: str = MODEL_NAME):
-    """Load the base Mistral-7B model quantised with BitsAndBytes and its tokenizer."""
+    """Load the base Mistral-7B model quantised with BitsAndBytes and its tokenizer.
+
+    Args:
+        model_name: HuggingFace model identifier. Defaults to MODEL_NAME.
+
+    Returns:
+        Tuple of (model, tokenizer).
+    """
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
@@ -39,7 +46,15 @@ def load_base_model(model_name: str = MODEL_NAME):
 
 
 def load_finetuned_model(adapter_path: str, model_name: str = MODEL_NAME):
-    """Load the base model with a LoRA adapter merged on top."""
+    """Load the base model with a LoRA adapter merged on top.
+
+    Args:
+        adapter_path: Path or HuggingFace repo ID of the LoRA adapter.
+        model_name: HuggingFace model identifier. Defaults to MODEL_NAME.
+
+    Returns:
+        Tuple of (model, tokenizer).
+    """
     base_model, tokenizer = load_base_model(model_name)
     model = PeftModel.from_pretrained(base_model, adapter_path)
     model.eval()
@@ -102,17 +117,21 @@ def run_inference_on_test_set(
     max_new_tokens: int = 256,
     temperature: float = 0.0,
 ) -> list[dict]:
-    """
-    Run inference on the full test set.
+    """Run inference on the full test set.
 
     Each test example has 'messages' = [system, user, assistant].
     We feed only [system, user] and capture the model's response.
 
-    Returns a list of result dicts with:
-        - 'input_messages': the system + user messages fed to the model
-        - 'expected': the ground truth assistant response (string)
-        - 'predicted': the model's generated response (string)
-        - 'category': the example category (if present)
+    Args:
+        model: The loaded base language model.
+        tokenizer: The tokenizer matching the model.
+        test_data: List of example dicts, each with 'messages' and 'category'.
+        max_new_tokens: Maximum number of tokens to generate per example.
+        temperature: Sampling temperature. Set to 0 for greedy decoding.
+
+    Returns:
+        A list of result dicts, each with 'input_messages', 'expected',
+        'predicted', and 'category'.
     """
     results = []
 

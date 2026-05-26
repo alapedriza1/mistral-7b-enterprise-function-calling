@@ -9,9 +9,15 @@ import pandas as pd
 from src.schemas import TOOL_SCHEMA_MAP
 
 def _try_parse_json(text: str):
-    """
-    Attempt to parse text as JSON, handling markdown fences.
-    Returns (parsed_object, True) on success, (None, False) on failure.
+    """Attempt to parse text as JSON, handling markdown fences.
+
+    Args:
+        text: Raw string that may contain JSON, optionally wrapped in
+            markdown code fences.
+
+    Returns:
+        A tuple of (parsed_object, True) on success, or (None, False)
+        on failure.
     """
     text = text.strip()
 
@@ -29,7 +35,15 @@ def _try_parse_json(text: str):
         return None, False
 
 def _normalise_to_list(obj) -> list[dict]:
-    """Wrap a single tool call dict into a list for uniform handling."""
+    """Wrap a single tool call dict into a list for uniform handling.
+
+    Args:
+        obj: A parsed JSON object - either a single dict or a list of dicts.
+
+    Returns:
+        A list of dicts. Single dicts are wrapped in a list, lists are
+        returned as-is, and anything else returns an empty list.
+    """
     if isinstance(obj, dict):
         return [obj]
     if isinstance(obj, list):
@@ -155,7 +169,14 @@ def _score_single_call(exp_call: dict, pred_calls: list[dict], schema: dict) -> 
 
 
 def score_no_tool_example(predicted: str) -> ExampleScore:
-    """Score a no-tool example: only restraint matters."""
+    """Score a no-tool example: only restraint matters.
+
+    Args:
+        predicted: The model's raw predicted output string.
+
+    Returns:
+        An ExampleScore with only no_tool_restraint populated.
+    """
     parsed, valid = _try_parse_json(predicted)
 
     showed_restraint = True
@@ -177,6 +198,16 @@ def score_tool_example(predicted: str, expected: str, category: str) -> ExampleS
         used for value-level comparison (argument_match).
       - TOOL_SCHEMA_MAP: the tool definitions from schemas.py, used for
         structural validation (required fields, types, enums, hallucination).
+
+    Args:
+        predicted: The model's raw predicted output string.
+        expected: The ground-truth expected output string (JSON of function
+            call(s) from the test set).
+        category: The example category (e.g. "simple", "complex",
+            "multi_tool", "ambiguous").
+
+    Returns:
+        An ExampleScore with all tool-calling metrics populated.
     """
     score = ExampleScore(category=category)
 
@@ -232,11 +263,14 @@ def score_tool_example(predicted: str, expected: str, category: str) -> ExampleS
     return score
 
 def evaluate_results(results: list[dict]) -> pd.DataFrame:
-    """
-    Evaluate all results. Returns a DataFrame with one row per example.
+    """Evaluate all results. Returns a DataFrame with one row per example.
 
     Args:
-        results: list of dicts with 'predicted', 'expected', 'category'
+        results: List of dicts with 'predicted', 'expected', and 'category' keys.
+
+    Returns:
+        A DataFrame with one row per example and columns for each metric
+        in ExampleScore.
     """
     scores = []
     for r in results:

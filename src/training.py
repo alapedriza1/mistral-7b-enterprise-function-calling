@@ -14,8 +14,6 @@ from src.inference import MODEL_NAME, BNB_CONFIG
 from src.schemas import TOOL_SCHEMA_MAP, TOOL_NAMES, build_system_prompt, MAX_SEQ_LENGTH
 
 
-# ─── Default Hyperparameters ─────────────────────────────────────────────────
-
 DEFAULT_LORA_CONFIG = {
     "r": 16,
     "lora_alpha": 32,
@@ -65,9 +63,6 @@ TRAINING_CHAT_TEMPLATE = (
 )
 
 
-# ─── Logging Callback ────────────────────────────────────────────────────────
-
-
 class PrintProgressCallback(TrainerCallback):
     """Prints training progress to stdout so it appears in Kaggle logs."""
 
@@ -111,8 +106,6 @@ class PrintProgressCallback(TrainerCallback):
         print(f"[TRAIN] Complete | {state.global_step} steps | {elapsed:.1f} min total",
               flush=True)
 
-
-# ─── Message Formatting ──────────────────────────────────────────────────────
 
 
 def merge_system_into_user(messages: list[dict]) -> list[dict]:
@@ -205,15 +198,15 @@ def _trim_system_tools(messages: list[dict], n_distractors: int = N_DISTRACTOR_T
     ]
 
 
-# ─── Model Loading ───────────────────────────────────────────────────────────
-
-
 def load_model_for_training(model_name: str = MODEL_NAME):
     """Load the base model in 4-bit and prepare it for QLoRA training.
 
     Uses device_map="auto" to split model layers across available GPUs.
     On Kaggle T4x2, this distributes ~16 layers per GPU. The Trainer
     detects hf_device_map spanning multiple devices and skips DataParallel.
+
+    Args:
+        model_name: HuggingFace model identifier. Defaults to MODEL_NAME.
 
     Returns:
         Tuple of (model, tokenizer) ready for LoRA adapter attachment.
@@ -236,9 +229,6 @@ def load_model_for_training(model_name: str = MODEL_NAME):
     return model, tokenizer
 
 
-# ─── LoRA Setup ──────────────────────────────────────────────────────────────
-
-
 def apply_lora(model, lora_config: dict = None) -> object:
     """Attach a LoRA adapter to the model.
 
@@ -256,8 +246,6 @@ def apply_lora(model, lora_config: dict = None) -> object:
     model.print_trainable_parameters()
     return model
 
-
-# ─── Dataset Preparation ─────────────────────────────────────────────────────
 
 
 def _prepare_dataset(examples: list[dict]) -> Dataset:
@@ -277,8 +265,6 @@ def _prepare_dataset(examples: list[dict]) -> Dataset:
         for ex in examples
     ])
 
-
-# ─── Truncation Check ───────────────────────────────────────────────────────
 
 
 def check_truncation(
@@ -328,9 +314,6 @@ def check_truncation(
         "max_tokens": max(lengths),
         "max_over": max_over,
     }])
-
-
-# ─── Training ────────────────────────────────────────────────────────────────
 
 
 def _create_trainer(

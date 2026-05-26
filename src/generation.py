@@ -7,20 +7,13 @@ from typing import Optional
 
 import pandas as pd
 
-from src.schemas import TOOL_SCHEMAS, TOOL_NAMES
+from src.schemas import TOOL_SCHEMAS, TOOL_NAMES, TOOL_SCHEMA_MAP
 from src.validation import (
     parse_model_response,
     validate_single_tool_example,
     validate_multi_tool_example,
     validate_no_tool_example,
 )
-
-# Name-keyed lookup from the schema list
-TOOL_SCHEMAS_BY_NAME: dict[str, dict] = {t["name"]: t for t in TOOL_SCHEMAS}
-
-# ---------------------------------------------------------------------------
-# Prompt templates — shared skeleton + category-specific rules
-# ---------------------------------------------------------------------------
 
 _PREAMBLE = "You are generating synthetic training data for fine-tuning an LLM on function calling."
 _FOOTER = "Return ONLY the JSON array. No markdown, no explanation, no code fences."
@@ -152,7 +145,6 @@ def build_prompt(
     """
     parts = [_PREAMBLE, ""]
 
-    # Schema section
     if category == "no_tool":
         parts.append(f"The LLM has access to these tools: {', '.join(TOOL_NAMES)}")
     elif category in ("multi_tool", "ambiguous"):
@@ -163,7 +155,6 @@ def build_prompt(
     else:
         parts.append(f"TOOL SCHEMA:\n{json.dumps(schema_1, indent=2)}")
 
-    # Task description
     if category == "multi_tool":
         parts.append(
             f"Generate exactly {num_examples} examples where the user's request "
@@ -185,10 +176,8 @@ def build_prompt(
             f"a natural user message and the correct function call response."
         )
 
-    # Category rules
     parts.append(_CATEGORY_RULES[category])
 
-    # Output format
     tool_name = schema_1["name"] if schema_1 else ""
     tool_name_2 = schema_2["name"] if schema_2 else ""
     parts.append(_output_format(category, tool_name, tool_name_2))
@@ -196,10 +185,6 @@ def build_prompt(
 
     return "\n\n".join(parts)
 
-
-# ---------------------------------------------------------------------------
-# Tool pairings
-# ---------------------------------------------------------------------------
 
 MULTI_TOOL_PAIRS = [
     ("search_customers", "get_customer_risk_profile"),
@@ -227,17 +212,12 @@ AMBIGUOUS_PAIRS = [
     ("run_database_query", "get_transaction_history"),
 ]
 
-# ---------------------------------------------------------------------------
-# Declarative generation plan config
-# ---------------------------------------------------------------------------
-
-# (category, batches_per_item, batch_size)
 PLAN_CONFIG = [
-    ("simple", 4, 10),       # 4 batches × 10 = 40 per tool × 16 tools = 640
-    ("complex", 3, 8),       # 3 batches × 8  = 24 per tool × 16 tools = 384  (close enough to ~400)
-    ("multi_tool", 3, 8),    # 3 batches × 8  = 24 per pair × 10 pairs = 240
-    ("ambiguous", 2, 8),     # 2 batches × 8  = 16 per pair × 10 pairs = 160
-    ("no_tool", 16, 10),     # 16 batches × 10 = 160
+    ("simple", 4, 10),
+    ("complex", 3, 8),
+    ("multi_tool", 3, 8),
+    ("ambiguous", 2, 8),
+    ("no_tool", 16, 10),
 ]
 
 
@@ -249,7 +229,7 @@ class GenerationTask:
     and validate the resulting examples.
 
     Attributes:
-        category: The example type — one of "simple", "complex",
+        category: The example type - one of "simple", "complex",
             "multi_tool", "ambiguous", or "no_tool".
         prompt: The fully assembled prompt string to send to the LLM.
         expected_count: Number of examples requested in this batch.
@@ -298,8 +278,8 @@ def build_generation_plan() -> list[GenerationTask]:
                         category=category,
                         prompt=build_prompt(
                             category, batch_size,
-                            schema_1=TOOL_SCHEMAS_BY_NAME[t1],
-                            schema_2=TOOL_SCHEMAS_BY_NAME[t2],
+                            schema_1=TOOL_SCHEMA_MAP[t1],
+                            schema_2=TOOL_SCHEMA_MAP[t2],
                         ),
                         expected_count=batch_size,
                         tool_name=t1,
@@ -313,8 +293,8 @@ def build_generation_plan() -> list[GenerationTask]:
                         category=category,
                         prompt=build_prompt(
                             category, batch_size,
-                            schema_1=TOOL_SCHEMAS_BY_NAME[correct],
-                            schema_2=TOOL_SCHEMAS_BY_NAME[distractor],
+                            schema_1=TOOL_SCHEMA_MAP[correct],
+                            schema_2=TOOL_SCHEMA_MAP[distractor],
                         ),
                         expected_count=batch_size,
                         tool_name=correct,
@@ -332,10 +312,6 @@ def build_generation_plan() -> list[GenerationTask]:
     return tasks
 
 
-# ---------------------------------------------------------------------------
-# Generation runner
-# ---------------------------------------------------------------------------
-
 def run_generation(
     tasks: list[GenerationTask],
     llm_call_fn,
@@ -346,12 +322,12 @@ def run_generation(
 
     Iterates through the task list, calling the LLM for each, parsing and
     validating the response, and accumulating valid examples. Retries failed
-    tasks up to ``max_retries`` times. Prints progress updates every 20 tasks.
+    tasks up to max_retries times. Prints progress updates every 20 tasks.
 
     Args:
         tasks: List of GenerationTask objects (typically from
             build_generation_plan()).
-        llm_call_fn: A callable with signature ``(prompt: str) -> str`` that
+        llm_call_fn: A callable with signature (prompt: str) -> str that
             sends the prompt to the generator LLM and returns the raw text
             response.
         max_retries: Maximum number of retry attempts per task after an
@@ -393,11 +369,11 @@ def run_generation(
 
                 all_examples.extend(valid)
                 log.append(_log_entry(task_id, task, attempt, len(parsed), len(valid), invalid, "success"))
-                print(f"  ✅ {task_id} | attempt {attempt} | {len(valid)}/{len(parsed)} valid")
+                print(f"  [OK] {task_id} | attempt {attempt} | {len(valid)}/{len(parsed)} valid")
                 break
 
             except Exception as e:
-                print(f"  ❌ {task_id} | attempt {attempt} | Error: {e}")
+                print(f"  [FAIL] {task_id} | attempt {attempt} | Error: {e}")
                 if attempt == max_retries + 1:
                     log.append(_log_entry(task_id, task, attempt, 0, 0, 0, f"failed: {e}"))
 
@@ -433,10 +409,10 @@ def _validate(task: GenerationTask, example: dict) -> list[str]:
     if task.category == "multi_tool":
         return validate_multi_tool_example(
             example,
-            TOOL_SCHEMAS_BY_NAME[task.tool_name],
-            TOOL_SCHEMAS_BY_NAME[task.tool_name_2],
+            TOOL_SCHEMA_MAP[task.tool_name],
+            TOOL_SCHEMA_MAP[task.tool_name_2],
         )
-    return validate_single_tool_example(example, TOOL_SCHEMAS_BY_NAME[task.tool_name])
+    return validate_single_tool_example(example, TOOL_SCHEMA_MAP[task.tool_name])
 
 
 def _log_entry(task_id: str, task: GenerationTask, attempt: int, generated: int, valid: int, invalid: int, status: str) -> dict:
@@ -451,7 +427,7 @@ def _log_entry(task_id: str, task: GenerationTask, attempt: int, generated: int,
         generated: Total number of examples parsed from the LLM response.
         valid: Number of examples that passed validation.
         invalid: Number of examples that failed validation.
-        status: Outcome descriptor — "success" or a "failed: <reason>"
+        status: Outcome descriptor - "success" or a "failed: <reason>"
             string.
 
     Returns:

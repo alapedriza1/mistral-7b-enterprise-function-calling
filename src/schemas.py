@@ -585,10 +585,25 @@ TOOL_SCHEMAS = [
 
 ALL_SCHEMAS_STR = json.dumps(TOOL_SCHEMAS, indent=2)
 TOOL_NAMES = [tool["name"] for tool in TOOL_SCHEMAS]
+TOOL_SCHEMA_MAP = {tool["name"]: tool for tool in TOOL_SCHEMAS}
 
-SYSTEM_PROMPT = f"""You are a helpful enterprise assistant with access to the following tools:
 
-{ALL_SCHEMAS_STR}
+MAX_SEQ_LENGTH = 2048
+
+
+def build_system_prompt(tools: list[dict]) -> str:
+    """Build the system prompt for a given set of tool schemas.
+
+    Args:
+        tools: List of tool schema dicts to include in the prompt.
+
+    Returns:
+        The complete system prompt string.
+    """
+    tools_json = json.dumps(tools, indent=2)
+    return f"""You are a helpful enterprise assistant with access to the following tools:
+
+{tools_json}
 
 Each tool is described by its name, description, and the parameters it accepts. Use these tools to fulfill user requests that match their capabilities.
 
@@ -602,3 +617,7 @@ If multiple tools are needed, respond with a JSON array of such objects:
 - Do not invent new tools or parameters.
 - If no tool is appropriate, respond conversationally and do NOT include any JSON.
 """
+
+
+# Full system prompt with all tools (used at inference time)
+SYSTEM_PROMPT = build_system_prompt(TOOL_SCHEMAS)
